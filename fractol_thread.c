@@ -1,7 +1,8 @@
 #include "mlx.h"
 #include <unistd.h>
 #include <stdio.h>
-//#include <math.h>
+#include <pthread.h>
+
 #define WIDTH 1000
 #define HEIGHT 1000
 #define MAX_ITERATION 1000
@@ -65,11 +66,15 @@ void init_tab()
 	}
 }
 
+pthread_mutex_t lock;
 double size = 1000;
 double inc = 100;
+int start_x = 0;
+int start_y = 0;
 
-int	loop_hook(t_mlx_info *mlx_info)
+void	*accelerate(void *arg)
 {
+	t_mlx_info *mlx_info = arg;
 	double	zx;
 	double	zy;
 	double	temp;
@@ -79,17 +84,34 @@ int	loop_hook(t_mlx_info *mlx_info)
 	double	size_by_2;
 	double	remember_zy;
 	int		x;
-	int		y = 0;
+	int		y;
+	int		sx;
+	int		sy;
+	int		stop_x;
+	int		stop_y;
 	int		iteration;
 	long int check = 0;
 	
 	cy *= -1;
 	size_by_2 = 500 - size / 2;
-	while (y < HEIGHT)
+	pthread_mutex_lock(&lock);
+	if (start_x == WIDTH)
 	{
-		x = 0;
+		start_x = 0;
+		start_y += 500;
+	}
+	sx = start_x;
+	sy = start_y;
+	start_x += 500;
+	pthread_mutex_unlock(&lock);
+	y = sy;
+	stop_x = sx + 500;
+	stop_y = sy + 500;
+	while (y < stop_y)
+	{
+		x = sx;
 		remember_zy = (((((double)y / WIDTH) * size + size_by_2) / 1000) * R * 2) - R;
-		while (x < WIDTH)
+		while (x < stop_x)
 		{
 			zx = (((((double)x / WIDTH) * size + size_by_2) / 1000) * R * 2) - R;
 			zy = remember_zy;
@@ -115,6 +137,24 @@ int	loop_hook(t_mlx_info *mlx_info)
 		}
 		y++;
 	}
+	fprintf(stderr, "end now %d\n",(int)pthread_self());
+	return (0);
+}
+
+int	loop_hook(t_mlx_info *mlx_info)
+{
+	pthread_t tid[4];
+
+	pthread_create(&(tid[0]), NULL, &accelerate, (void*)mlx_info);
+	pthread_create(&(tid[1]), NULL, &accelerate, (void*)mlx_info);
+	pthread_create(&(tid[2]), NULL, &accelerate, (void*)mlx_info);
+	pthread_create(&(tid[3]), NULL, &accelerate, (void*)mlx_info);
+	pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+	pthread_join(tid[2], NULL);
+    pthread_join(tid[3], NULL);
+	start_x = 0;
+	start_y = 0;
 	mlx_put_image_to_window(mlx_info->mlx, mlx_info->window, mlx_info->image, 0, 0);
 	if (size <= inc * 2)
 		inc /= 10;
@@ -134,5 +174,6 @@ int main()
 	mlx_info.img = (int*)mlx_get_data_addr(mlx_info.image, &trash, &mlx_info.line_size, &trash);
 	mlx_loop_hook(mlx_info.mlx, *loop_hook, &mlx_info);
 	init_tab();
+	pthread_mutex_init(&lock, NULL);
 	mlx_loop(mlx_info.mlx);
 }
